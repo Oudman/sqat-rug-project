@@ -1,7 +1,10 @@
 module sqat::series1::A3_CheckStyle
 
 import lang::java::\syntax::Java15;
+import ParseTree;
+import util::FileSystem;
 import Message;
+import IO;
 
 /*
 
@@ -42,10 +45,28 @@ Bonus:
 */
 
 set[Message] checkStyle(loc project) {
-  set[Message] result = {};
-  
-  // to be done
-  // implement each check in a separate function called here. 
-  
-  return result;
+	result = {*checkStarImport(f) | /file(f) <- crawl(project), f.extension == "java"};
+	result += {*checkStaticImport(f) | /file(f) <- crawl(project), f.extension == "java"};
+	result += {*checkFileLength(f) | /file(f) <- crawl(project), f.extension == "java"};
+	return result;
 }
+
+/* returns set of star import violations including locations, according to http://checkstyle.sourceforge.net/config_imports.html#AvoidStarImport */
+set[Message] checkStarImport(loc file) 
+	= {info("Star import", imp@\loc) | /ImportDec imp := parse(#start[CompilationUnit], file, /^import .+\.\*;$/ == imp)};
+
+/* returns set of static import violations including locations, according to http://checkstyle.sourceforge.net/config_imports.html#AvoidStaticImport */
+set[Message] checkStaticImport(loc file)
+	= {info("Static import", imp@\loc) | /ImportDec imp := parse(#start[CompilationUnit], file, /^import static .*;$/ == imp)};
+
+/* returns Message if the the file is too long, according to http://checkstyle.sourceforge.net/config_sizes.html#FileLength */
+set[Message] checkFileLength(loc file) {
+	int maxLength = 15;
+	int actualLength = size(readFileLines(file)); // moet vast efficienter kunnen, dit is een vrij lelijke implementatie
+	if (actualLength > maxLength) {
+		return {info("Large file: <actualLength> LOC", file)}; // file too long
+	} else {
+		return {};
+	}
+}
+
