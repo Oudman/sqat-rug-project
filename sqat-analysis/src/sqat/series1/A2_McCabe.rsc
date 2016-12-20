@@ -101,6 +101,17 @@ tuple[loc method, int cc] highestComplexity(set[Declaration] decls){
 	return sort(methods, bool (< loc _, int a>, < loc _, int b>) { return a > b; })[0];
 }
 
+num complexitySizeCorrelation(set[Declaration] decls){	
+	lrel[int cc, int size] result = [];
+	
+	for(tuple[loc,int] tup <- cc(decls)){
+		result = result + <tup[1], tup[0].end.line - tup[0].begin.line + 1>;
+	}
+	
+	return PearsonsCorrelation(result);
+
+}
+
 test bool launcherCC(){
 	Declaration launcherAST = createAstFromFile(|project://sqat-rug-project/jpacman/src/main/java/nl/tudelft/jpacman/Launcher.java|, true);
 	
