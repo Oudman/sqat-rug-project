@@ -1,6 +1,6 @@
 module sqat::series1::A2_McCabe
 
-import lang::java::\syntax::Java15;
+import Java17ish;
 import lang::java::jdt::m3::AST;
 import IO;
 import Set;
@@ -42,7 +42,7 @@ Bonus
 */
 
 set[Declaration] jpacmanASTs() = createAstsFromEclipseProject(|project://jpacman-framework|, true);
-set[Declaration] jpacmanSrcASTs() = createAstsFromDirectory(|project://sqat-rug-project/jpacman/src|, true);
+set[Declaration] jpacmanSrcASTs() = createAstsFromDirectory(|project://jpacman-framework/src/main|, true);
 
 alias CC = rel[loc method, int cc];
 
