@@ -116,3 +116,15 @@ int SLOCinFile(loc file){
 	}
 	return numSLOC;
 }
+
+test bool testPCE() 
+  = SLOCinFile(|project://jpacman-framework/src/main/java/nl/tudelft/jpacman/PacmanConfigurationException.java|) 
+  == 9; //verified by hand
+
+test bool testB() 
+  = SLOCinFile(|project://jpacman-framework/src/main/java/nl/tudelft/jpacman/board/Board.java|) 
+  == 34; //verified by hand
+
+test bool testGameFolder()
+  = sloc(|project://jpacman-framework/src/main/java/nl/tudelft/jpacman/game|)
+  == 53 + 15 + 24;

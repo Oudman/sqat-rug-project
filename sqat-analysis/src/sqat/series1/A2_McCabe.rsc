@@ -101,34 +101,19 @@ tuple[loc method, int cc] highestComplexity(set[Declaration] decls){
 	return sort(methods, bool (< loc _, int a>, < loc _, int b>) { return a > b; })[0];
 }
 
-num complexitySizeCorrelation(set[Declaration] decls){	
-	lrel[int cc, int size] result = [];
-	
-	for(tuple[loc,int] tup <- cc(decls)){
-		result = result + <tup[1], tup[0].end.line - tup[0].begin.line + 1>;
-	}
-	
-	return PearsonsCorrelation(result);
-
+test bool launcherCC(){
+	Declaration launcherAST = createAstFromFile(|project://jpacman-framework/src/main/java/nl/tudelft/jpacman/Launcher.java|, true);
+	CC result = cc({launcherAST});
+	return size(result) == 21;
 }
 
-test bool launcherCC(){
-	Declaration launcherAST = createAstFromFile(|project://sqat-rug-project/jpacman/src/main/java/nl/tudelft/jpacman/Launcher.java|, true);
-	
-	CC result = cc({launcherAST});
-	
-	if (size(result) != 21){
-		return false;
-	}
-	
-	if (highestComplexity({launcherAST}).cc != 2){
-		return false;
-	}
-	
-	CCDist dist = ccDist(result);
-	
-	if (dist[1] == 19 && dist[2] == 2){
-		return true;
-	}
-	
+test bool launcherHighestComplexity(){
+	Declaration launcherAST = createAstFromFile(|project://jpacman-framework/src/main/java/nl/tudelft/jpacman/Launcher.java|, true);
+	return highestComplexity({launcherAST}).cc == 2;
+}
+
+test bool launcherComplexityDistribution(){
+	Declaration launcherAST = createAstFromFile(|project://jpacman-framework/src/main/java/nl/tudelft/jpacman/Launcher.java|, true);
+	CCDist dist = ccDist(cc({launcherAST}));
+	return dist[1] == 19 && dist[2] == 2;
 }

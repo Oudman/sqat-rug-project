@@ -1,10 +1,11 @@
 module sqat::series1::A3_CheckStyle
 
-import lang::java::\syntax::Java15;
+import Java17ish;
 import ParseTree;
 import util::FileSystem;
 import Message;
 import IO;
+import Set;
 
 /*
 
@@ -25,6 +26,7 @@ finds them.
 Questions
 - for each violation: look at the code and describe what is going on? 
   Is it a "valid" violation, or a false positive?
+  A: No violations were found.
 
 Tips 
 
@@ -44,25 +46,19 @@ Bonus:
 
 */
 
-set[Message] checkStyle(loc project) {
-	result = {*checkStarImport(f) | /file(f) <- crawl(project), f.extension == "java"};
-	result += {*checkStaticImport(f) | /file(f) <- crawl(project), f.extension == "java"};
-	result += {*checkFileLength(f) | /file(f) <- crawl(project), f.extension == "java"};
-	return result;
-}
+
 
 /* returns set of star import violations including locations, according to http://checkstyle.sourceforge.net/config_imports.html#AvoidStarImport */
 set[Message] checkStarImport(loc file) 
-	= {info("Star import", imp@\loc) | /ImportDec imp := parse(#start[CompilationUnit], file, /^import .+\.\*;$/ == imp)};
+	= {info("Star import", imp@\loc) | /ImportDec imp := parse(#start[CompilationUnit], file), /\*/ := readFileLines(imp@\loc)[0]}; // /^import .+\.\*;$/ := imp)};
 
 /* returns set of static import violations including locations, according to http://checkstyle.sourceforge.net/config_imports.html#AvoidStaticImport */
 set[Message] checkStaticImport(loc file)
-	= {info("Static import", imp@\loc) | /ImportDec imp := parse(#start[CompilationUnit], file, /^import static .*;$/ == imp)};
+	= {info("Static import", imp@\loc) | /ImportDec imp := parse(#start[CompilationUnit], file), /import\s*static/ := readFileLines(imp@\loc)[0]};
 
 /* returns Message if the the file is too long, according to http://checkstyle.sourceforge.net/config_sizes.html#FileLength */
-set[Message] checkFileLength(loc file) {
-	int maxLength = 15;
-	int actualLength = size(readFileLines(file)); // moet vast efficienter kunnen, dit is een vrij lelijke implementatie
+set[Message] checkFileLength(loc file, int maxLength = 1500) {
+	int actualLength = size(readFileLines(file));
 	if (actualLength > maxLength) {
 		return {info("Large file: <actualLength> LOC", file)}; // file too long
 	} else {
@@ -70,3 +66,25 @@ set[Message] checkFileLength(loc file) {
 	}
 }
 
+set[Message] checkStyle(loc project) {
+	result = {*checkStarImport(f) | /file(f) <- crawl(project), f.extension == "java"};
+	result += {*checkStaticImport(f) | /file(f) <- crawl(project), f.extension == "java"};
+	result += {*checkFileLength(f) | /file(f) <- crawl(project), f.extension == "java"};
+	return result;
+}
+
+test bool testA3stars()
+  = size(checkStarImport(|project://sqat-analysis/src/sqat/series1/A3_test.java|))
+  == 2;
+
+test bool testA3static()
+  = size(checkStaticImport(|project://sqat-analysis/src/sqat/series1/A3_test.java|))
+  == 2;
+
+test bool testA3size()
+  = size(checkFileLength(|project://sqat-analysis/src/sqat/series1/A3_test.java|))
+  == 0;
+
+test bool testA3sizeLowThreshold()
+  = size(checkFileLength(|project://sqat-analysis/src/sqat/series1/A3_test.java|, maxLength = 150))
+  == 1;
