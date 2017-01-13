@@ -5,6 +5,7 @@ import analysis::m3::Core;
 import lang::java::m3::Core;
 import util::Math;
 import Set;
+import List;
 import IO;
 
 /*
@@ -57,6 +58,7 @@ set[loc] classes(M3 m3) = {x[0] | x <- m3@declarations, x[0].scheme == "java+cla
 set[loc] methods(M3 m3) = {x[0] | x <- m3@declarations, x[0].scheme == "java+method" || x[0].scheme == "java+constructor"};
 
 set[loc] testMethods(M3 m3) = {x | x <- methods(m3), |java+interface:///org/junit/Test| in m3@annotations[x]};
+set[loc] nonTestMethods(M3 m3) = methods(m3) - testMethods(m3);
 
 set[loc] classMethods(M3 m3, loc class) = { x | x <- m3@containment[class], x.scheme=="java+method" || x.scheme == "java+constructor"};
 bool isTestClass(M3 m3, loc class) = 0 < size({x | x <- classMethods(m3, class), x in testMethods(m3)});
@@ -86,28 +88,9 @@ set[loc] coveredMethods(M3 m3) {
 	return covered;
 }
 
-real classCoverage(M3 m3, set[loc] coveredMethods, loc class) {
-	set[loc] cm = classMethods(m3, class);
-	if (size(cm) >0) {
-		return size(cm & coveredMethods) / (size(cm) + 0.0);
-	} else {
-		println("Warning: class has no methods:");
-		println(class);
-		return 1.0;
-	}
-}
-
-rel[loc, real] nonTestClassesCoverage(M3 m3) {
-	set[loc] cm = coveredMethods(m3);
-	return {<x, classCoverage(m3, cm, x)> | x <- nonTestClasses(m3)};
-}
-
-
 /*
 3)	For each non-test class, count number of defined methods.
 */
-
-//{x | x <- tmp@containment[toList(tmp@names["Board"])[1]], x.scheme == "java+method"};
 
 /*
 4)	Use ratio (covered methods in non-test class X) / (defined methods in X) as the estimation on class level.
@@ -115,11 +98,28 @@ rel[loc, real] nonTestClassesCoverage(M3 m3) {
 	Use package level ratio's to calculate system level ratio's.
 */
 
+lrel[real, loc] nonTestClassesCoverage(M3 m3) {
+	set[loc] cm = coveredMethods(m3);
+	result = [<classCoverage(m3, cm, x), x> | x <- nonTestClasses(m3)];
+	return sort(result, bool (<real a, loc _>, <real b, loc _>) { return a > b; });
+}
 
+real classCoverage(M3 m3, set[loc] coveredMethods, loc class) {
+	set[loc] cm = classMethods(m3, class);
+	if (size(cm) >0) {
+		return size(cm & coveredMethods) / (size(cm) + 0.0);
+	} else {
+		println("warning: class has no methods:");
+		println(class);
+		return 1.0;
+	}
+}
 
-
-
-
-
-
-
+real systemCoverage(M3 m3) {
+	if (size(nonTestMethods(m3)) >0) {
+		return size(nonTestMethods(m3) & coveredMethods(m3)) / (size(nonTestMethods(m3)) + 0.0);
+	} else {
+		println("warning: system has no methods");
+		return 1.0;
+	}
+}
