@@ -5,6 +5,7 @@ import analysis::m3::Core;
 import lang::java::m3::Core;
 import util::Math;
 import Set;
+import IO;
 
 /*
 
@@ -88,16 +89,17 @@ set[loc] coveredMethods(M3 m3) {
 real classCoverage(M3 m3, set[loc] coveredMethods, loc class) {
 	set[loc] cm = classMethods(m3, class);
 	if (size(cm) >0) {
-		return size(cm & coveredMethods) / (cm + 0.0);
+		return size(cm & coveredMethods) / (size(cm) + 0.0);
 	} else {
-		println("Warning: class " + toString(class) + " has no methods.");
+		println("Warning: class has no methods:");
+		println(class);
 		return 1.0;
 	}
 }
 
 rel[loc, real] nonTestClassesCoverage(M3 m3) {
 	set[loc] cm = coveredMethods(m3);
-	return {classCoverage(m3, cm, x) | x <- nonTestClasses(m3)};
+	return {<x, classCoverage(m3, cm, x)> | x <- nonTestClasses(m3)};
 }
 
 
@@ -112,3 +114,12 @@ rel[loc, real] nonTestClassesCoverage(M3 m3) {
 	Use class level ratio's to calculate package level ratio's.
 	Use package level ratio's to calculate system level ratio's.
 */
+
+
+
+
+
+
+
+
+
