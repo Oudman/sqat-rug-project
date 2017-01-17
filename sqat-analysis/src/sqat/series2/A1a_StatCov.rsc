@@ -91,13 +91,19 @@ rel[loc, str, loc] allMethodCallees(M3 m3) = {*methodCallees(m3, x) | x <- metho
 
 rel[loc, str, loc] overloadingCallees(M3 m3) = {<x[1], "OC", x[0]> | x <- m3@methodOverrides};
 
-rel[loc, str, loc] callGraph(M3 m3) = classesDefineMethod(m3) + allMethodCallees(m3) + overloadingCallees(m3);
+set[loc] getConstructors(M3 m3, loc class) = {x | x <- m3@containment[class], x.scheme == "java+constructor"};
+loc getConstructor(M3 m3, loc class) = head(sort(getConstructors(m3, class)));
+
+bool callsSuper(M3 m3, loc method, loc super) = size(getConstructors(m3, super) & m3@methodInvocation[method]) > 0;
+rel[loc, str, loc] virtualCallees(M3 m3) = {<y, "VC", getConstructor(m3, super)> | <sub, super> <- m3@extends, y <- getConstructors(m3, sub), !callsSuper(m3, y, super), super in classes(m3)};
+
+rel[loc, str, loc] callGraph(M3 m3) = classesDefineMethod(m3) + allMethodCallees(m3) + overloadingCallees(m3) + virtualCallees(m3);
 
 /*
 2)	Collected methods covered by these test classes and store these in a set.
 */
 
-set[loc] traverse(set[loc] covered, rel[loc, str, loc] cg) = {*cg[x]["DM"] | x <- covered} + {*cg[x]["C"] | x <- covered} + {*cg[x]["OC"] | x <- covered};
+set[loc] traverse(set[loc] covered, rel[loc, str, loc] cg) = {*cg[x]["DM"] | x <- covered} + {*cg[x]["C"] | x <- covered} + {*cg[x]["OC"] | x <- covered} + {*cg[x]["VC"] | x <- covered};
 
 set[loc] coveredMethods(M3 m3) {
 	set[loc] covered = {*classMethods(m3, c) | c <- testClasses(m3)};
