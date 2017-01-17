@@ -44,8 +44,15 @@ Tips
 
 Questions:
 - what methods are not covered at all?
+  A: The system coverage is 41.0%. The list of non-covered methods is kinda long :p
 - how do your results compare to the jpacman results in the paper? Has jpacman improved?
+  A: Jpacman is not named in the paper, so no comparison can be made.
 - use a third-party coverage tool (e.g. Clover) to compare your results to (explain differences)
+  A: Clover gives a coverage of 71.6%.
+  The correlation between our results and the clover results are weak on class level.
+  One possible cause of differences could be that the way clover defines test classes and test methods
+  (all files in the test folder) differs from the way our coverage test defines test classes (annotations).
+  Another possible cause is the obvious difference between our static analysis and clover's running analysis.
 
 */
 
@@ -54,16 +61,24 @@ M3 jpacmanM3() = createM3FromEclipseProject(|project://jpacman-framework/src|);
 /*
 1)	Create a call graph of both production and test code. Make a set of all test classes. Make a set of the remaining non-test classes.
 */
+
+// sets of classes, packages and methods
 set[loc] classes(M3 m3) = {x[0] | x <- m3@declarations, x[0].scheme == "java+class"};
+set[loc] packages(M3 m3) = {x[0] | x <- m3@declarations, x[0].scheme == "java+package"};
 set[loc] methods(M3 m3) = {x[0] | x <- m3@declarations, x[0].scheme == "java+method" || x[0].scheme == "java+constructor"};
 
+// a method is a test method if and only if it has a junit test annotation
 set[loc] testMethods(M3 m3) = {x | x <- methods(m3), |java+interface:///org/junit/Test| in m3@annotations[x]};
 set[loc] nonTestMethods(M3 m3) = methods(m3) - testMethods(m3);
 
+// set of methods per class or package
 set[loc] classMethods(M3 m3, loc class) = { x | x <- m3@containment[class], x.scheme=="java+method" || x.scheme == "java+constructor"};
-bool isTestClass(M3 m3, loc class) = 0 < size({x | x <- classMethods(m3, class), x in testMethods(m3)});
+set[loc] packageMethods(M3 m3, loc package) = { x | x <- m3@containment[package], x.scheme=="java+method" || x.scheme == "java+constructor"};
 
-set[loc] testClasses(M3 m3) = {x | x <- classes(m3), isTestClass(m3, x)};
+// a class is a test class if and only if one or more of it's test methods are a test method
+//bool isTestClass(M3 m3, loc class) = 0 < size({x | x <- classMethods(m3, class), x in testMethods(m3)});
+//set[loc] testClasses(M3 m3) = {x | x <- classes(m3), isTestClass(m3, x)};
+set[loc] testClasses(M3 m3) = {x[0] | x <- m3@declarations, x[0].scheme == "java+class", /test/ := x[1].path};
 set[loc] nonTestClasses(M3 m3) = classes(m3) - testClasses(m3);
 
 rel[loc, str, loc] classDefinesMethod(M3 m3, loc class) = {<class, "DM", method> | method <- classMethods(m3, class)};
@@ -81,11 +96,16 @@ rel[loc, str, loc] callGraph(M3 m3) = classesDefineMethod(m3) + allMethodCallees
 set[loc] traverse(M3 m3, set[loc] covered) = {*callGraph(m3)[x]["C"] | x <- covered};
 
 set[loc] coveredMethods(M3 m3) {
-	set[loc] covered = testMethods(m3);
+	set[loc] covered = {*classMethods(m3, c) | c <- testClasses(m3)};
+	//set[loc] covered = testMethods(m3);
 	solve (covered) {
 		covered = covered + traverse(m3, covered);
 	}
 	return covered;
+}
+
+set[loc] nonCoveredMethods(M3 m3) {
+	return methods(m3) - coveredMethods(m3);
 }
 
 /*
@@ -98,12 +118,6 @@ set[loc] coveredMethods(M3 m3) {
 	Use package level ratio's to calculate system level ratio's.
 */
 
-lrel[real, loc] nonTestClassesCoverage(M3 m3) {
-	set[loc] cm = coveredMethods(m3);
-	result = [<classCoverage(m3, cm, x), x> | x <- nonTestClasses(m3)];
-	return sort(result, bool (<real a, loc _>, <real b, loc _>) { return a > b; });
-}
-
 real classCoverage(M3 m3, set[loc] coveredMethods, loc class) {
 	set[loc] cm = classMethods(m3, class);
 	if (size(cm) >0) {
@@ -113,6 +127,29 @@ real classCoverage(M3 m3, set[loc] coveredMethods, loc class) {
 		println(class);
 		return 1.0;
 	}
+}
+
+lrel[real, loc] nonTestClassesCoverage(M3 m3) {
+	set[loc] cm = coveredMethods(m3);
+	result = [<classCoverage(m3, cm, x), x> | x <- nonTestClasses(m3)];
+	return sort(result, bool (<real a, loc _>, <real b, loc _>) { return a > b; });
+}
+
+real packageCoverage(M3 m3, set[loc] coveredMethods, loc package) {
+	set[loc] cm = packageMethods(m3, package);
+	if (size(cm) >0) {
+		return size(cm & coveredMethods) / (size(cm) + 0.0);
+	} else {
+		println("warning: package has no methods:");
+		println(class);
+		return 1.0;
+	}
+}
+
+lrel[real, loc] packagesCoverage(M3 m3) {
+	set[loc] cm = coveredMethods(m3);
+	result = [<packageCoverage(m3, cm, x), x> | x <- packages(m3)];
+	return sort(result, bool (<real a, loc _>, <real b, loc _>) { return a > b; });
 }
 
 real systemCoverage(M3 m3) {
