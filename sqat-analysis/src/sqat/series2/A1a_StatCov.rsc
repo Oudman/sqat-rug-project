@@ -81,25 +81,29 @@ set[loc] packageMethods(M3 m3, loc package) = { x | x <- m3@containment[package]
 set[loc] testClasses(M3 m3) = {x[0] | x <- m3@declarations, x[0].scheme == "java+class", /test/ := x[1].path};
 set[loc] nonTestClasses(M3 m3) = classes(m3) - testClasses(m3);
 
+set[loc] enums(M3 m3) = {x[0] | x <- m3@declarations, x[0].scheme == "java+enum"};
+
 rel[loc, str, loc] classDefinesMethod(M3 m3, loc class) = {<class, "DM", method> | method <- classMethods(m3, class)};
-rel[loc, str, loc] classesDefineMethod(M3 m3) = {*classDefinesMethod(m3, x) | x <- classes(m3)};
+rel[loc, str, loc] classesDefineMethod(M3 m3) = {*classDefinesMethod(m3, x) | x <- classes(m3)} + {*classDefinesMethod(m3, x) | x <- enums(m3)};
 
 rel[loc, str, loc] methodCallees(M3 m3, loc method) = {<method, "C", called> | called <- m3@methodInvocation[method]};
 rel[loc, str, loc] allMethodCallees(M3 m3) = {*methodCallees(m3, x) | x <- methods(m3)};
 
-rel[loc, str, loc] callGraph(M3 m3) = classesDefineMethod(m3) + allMethodCallees(m3);
+rel[loc, str, loc] overloadingCallees(M3 m3) = {<x[1], "OC", x[0]> | x <- m3@methodOverrides};
+
+rel[loc, str, loc] callGraph(M3 m3) = classesDefineMethod(m3) + allMethodCallees(m3) + overloadingCallees(m3);
 
 /*
 2)	Collected methods covered by these test classes and store these in a set.
 */
 
-set[loc] traverse(M3 m3, set[loc] covered) = {*callGraph(m3)[x]["C"] | x <- covered};
+set[loc] traverse(set[loc] covered, rel[loc, str, loc] cg) = {*cg[x]["DM"] | x <- covered} + {*cg[x]["C"] | x <- covered} + {*cg[x]["OC"] | x <- covered};
 
 set[loc] coveredMethods(M3 m3) {
 	set[loc] covered = {*classMethods(m3, c) | c <- testClasses(m3)};
-	//set[loc] covered = testMethods(m3);
+	rel[loc, str, loc] cg = callGraph(m3);
 	solve (covered) {
-		covered = covered + traverse(m3, covered);
+		covered = covered + traverse(covered, cg);
 	}
 	return covered;
 }
