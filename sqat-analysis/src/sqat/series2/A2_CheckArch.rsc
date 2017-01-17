@@ -73,17 +73,19 @@ Questions
 M3 jpacmanM3() = createM3FromEclipseProject(|project://jpacman-framework/src|);
 
 set[loc] packageFiles(loc package, M3 m3) = {f | f <- m3@containment[package], f.scheme=="java+compilationUnit"}
-										  + {*packageFiles(p) | p <- m3@containment[package], p.scheme=="java+package"};
+										  + {*packageFiles(p, m3) | p <- m3@containment[package], p.scheme=="java+package"};
 										  
-set[loc] fileImports(loc file){
+set[loc] fileImports(loc file, M3 m3){
 	set[str] imports =  {id | line <- readFileLines(file), /\s*import\s*(static)?\s*<id:([A-Za-z_][A-Za-z_0-9]*\.)+([A-Za-z_][A-Za-z_0-9]*|\*)>;/ := line};
 	set[loc] importLocs = {};
 	
 	for(imp <- imports){
-		if(/\*/ := imp){
-			importLocs = importLocs + (|java+package:///| + replaceAll(imp[..-2],".","/"));
+		str path = /\*/ := imp ? replaceAll(imp[..-2],".","/") : replaceAll(imp,".","/");
+		
+		if(locInModel((|java+class:///| + path), m3)){
+			importLocs = importLocs + (|java+class:///| + path);
 		} else {
-			importLocs = importLocs + (|java+package:///| + replaceAll(imp,".","/"));
+			importLocs = importLocs + (|java+package:///| + path);
 		}
 	}
 	
@@ -94,7 +96,7 @@ set[loc] fileImports(loc file){
 set[loc] packageImports(loc package, M3 m3){
 	set[loc] files = packageFiles(package, m3);
 	
-	return {*fileImports(x) | x <- files};
+	return {*fileImports(x, m3) | x <- files};
 }
 
 bool checkModality(loc target, Modality modality, set[loc] invoked){
@@ -124,21 +126,34 @@ bool checkModality(loc target, Modality modality, set[loc] invoked){
 }
 
 set[loc] superPackages(loc package){
-	list[str] s = split("/",package.path)[1..];
-	return { |java+package:///| + intercalate("/",s[1..n]) | int n <- [1..size(s)] };	
+	list[str] s = split("/",package.path);
+	return { |java+package:///| + intercalate("/",s[1..n]) | int n <- [2..size(s)] };	
 }
 
 set[Message] checkImport(Rule r, Entity e1, Entity e2, Modality modality, M3 m3){
-//Check if e1 imports e2
+//Check if package e1 imports pkg/class e2
 
-	loc entity1 = |java+package:///| + replaceAll(e1,".","/");
-	loc entity2 = |java+package:///| + replaceAll(e2,".","/");
-
+	loc entity1 = |java+package:///| + replaceAll(unparse(e1),".","/");
+	loc entity2Package = |java+package:///| + replaceAll(unparse(e2),".","/");
+	loc entity2Class = |java+class:///| + replaceAll(unparse(e2),".","/");
+	loc en2;
+	
+	if(!packageExists(entity1,m3)){
+		throw (unparse(e1) + " does not name a valid package.");
+	}
+	
+	if(packageExists(entity2Package,m3)){
+		en2 = entity2Package;
+	} else if (locInModel(entity2Class,m3)){
+		en2 = entity2Class;
+	} else {
+		throw (unparse(e2) + " does not name a valid package.");
+	}
 		
 	set[loc] imports = packageImports(entity1,m3);
-	imports = superPackages(imports); //If a rule forbids importing foo, we must make sure that it recognizes foo.bar as well
+	imports = imports + {*superPackages(x) | x <- imports}; //If a rule forbids importing foo, we must make sure that it recognizes foo.bar as well
 	
-	 if (checkModality(entity2, modality, imports)){
+	 if (checkModality(en2, modality, imports)){
 	 	return {};
 	 } else {
 	 	return {info("Rule Violation: " + unparse(r), entity1)};
@@ -149,7 +164,7 @@ set[loc] fileClasses(loc cu, M3 m) = { c | c <- m@containment[cu], cu.scheme == 
 
 set[loc] packageClasses(loc p, M3 m) =	{*fileClasses(cu, m) | cu <- packageFiles(p, m)};
 
-bool packageExists(loc p, M3 m) = size( m@containment[p] ) > 0;
+bool packageExists(loc p, M3 m) = p in m@names.qualifiedName;
 
 set[Message] checkDepend(Rule r, Entity e1, Entity e2, Modality modality, M3 m3){
 	loc entity1Class = |java+class:///| + replaceAll(unparse(e1),".","/");
@@ -192,7 +207,15 @@ set[Message] checkDepend(Rule r, Entity e1, Entity e2, Modality modality, M3 m3)
 }
 
 bool locInModel(loc l, M3 m3){
-	return l in m3@names.qualifiedName;
+	return l in {stripMethod(x) | x <- m3@names.qualifiedName};
+}
+
+loc stripMethod(loc m){
+	str last = split("/",m.path)[-1];
+	last = split("(",last)[0];
+	m.path = intercalate("/",split("/",m.path)[..-1] + "/" + last);
+	
+	return m;
 }
 
 set[Message] checkInvoke(Rule r, Entity e1, Entity e2, Modality modality, M3 m3){
@@ -200,39 +223,39 @@ set[Message] checkInvoke(Rule r, Entity e1, Entity e2, Modality modality, M3 m3)
 	//e1 and e2 can be either a class or a method
 	
 	//e1 is either a Method, Constructor or a Class, so we search the declarations for them
-	loc entity1Class = |java+class:///| + replaceAll(e1,".","/");
-	loc entity1Method = |java+method:///| + replaceAll(e1,".","/");
-	loc entity1Constructor = |java+constructor:///| + replaceAll(e1,".","/");
-	
+	loc entity1Class = |java+class:///| + replaceAll(unparse(e1),".","/");
+	loc entity1Method = |java+method:///| + split("(",replaceAll(unparse(e1),".","/"))[0];
+	loc entity1Constructor = |java+constructor:///| + replaceAll(unparse(e1),".","/");
 	loc en1;
 	
 	set[loc] invoked = {};
 	
-	if( locInModel(entity1Class) ){
+	if( locInModel(entity1Class, m3) ){
 		en1 = entity1Class;
-		invoked = invoked + {*m3@methodInvocations[e] | e <- m3@containment[entity1Class], e.scheme in ["java+method","java.constructor"]};
+		invoked = invoked + {*m3@methodInvocation[e] | e <- m3@containment[en1], e.scheme in ["java+method","java.constructor"]};
 		
-	} else if ( locInModel(entity1Method) ){
+	} else if ( locInModel(entity1Method, m3) ){
 		en1 = entity1Method;
-		invoked = invoked + m3@methodInvocations[entity1Method];
+		invoked = invoked + m3@methodInvocation[en1];
 		
-	} else if ( locInModel(entity1Constructor) ){
+	} else if ( locInModel(entity1Constructor, m3) ){
 		en1 = entity1Constructor;
-		invoked = invoked + m3@methodInvocations[entity1Method];
+		invoked = invoked + m3@methodInvocation[en1];
 		
 	} else {
 		throw ("\""+ unparse(e1) + "\" does not name a valid and unique class, method or constructor.");
 	}
 	
+	invoked = {stripMethod(x) | x <- invoked};
 	
-	loc entity2Method = |java+method:///| + replaceAll(e2,".","/");
-	loc entity2Constructor = |java+constructor:///| + replaceAll(e2,".","/");
+	loc entity2Method = |java+method:///| + replaceAll(unparse(e2),".","/");
+	loc entity2Constructor = |java+constructor:///| + replaceAll(unparse(e2),".","/");
 	
 	if( locInModel(entity2Method, m3) ){
 		return checkModality(entity2Method, modality, invoked) 
 			? {} 
 			: {info("Rule Violation: " + unparse(r), en1)};
-	} else if (locInModel(entity2Constructor)){
+	} else if (locInModel(entity2Constructor, m3)){
 		return checkModality(entity2Constructor, modality, invoked) 
 			? {} 
 			: {info("Rule Violation: " + unparse(r), en1)};
@@ -243,7 +266,12 @@ set[Message] checkInvoke(Rule r, Entity e1, Entity e2, Modality modality, M3 m3)
 
 }
 
-set[loc] methodInstantiates(loc m, M3 m3) = { c | c <- m3@methodInvocation[m], c.scheme == "java+constructor"};
+set[loc] methodInstantiates(loc m, M3 m3){
+	 set[loc] a = { c | c <- m3@methodInvocation[m], c.scheme == "java+constructor"};
+	 
+	 return {|java+class:///| + intercalate("/",split("/",c.path)[..-1]) | c <- a};
+	 
+	 }
 
 set[loc] qualifiedNames(M3 m3) = m3@names.qualifiedName;
 
@@ -258,7 +286,7 @@ set[Message] checkInstantiate(Rule r, Entity e1, Entity e2, Modality modality, M
 	
 	if( locInModel(entity1Class, m3) ){
 		e = entity1Class;
-		invoked = invoked + {*methodInstantiates(e, m3) | e <- m3@containment[entity1Class], e.scheme in ["java+method","java+constructor"]};
+		invoked = invoked + {*methodInstantiates(a, m3) | a <- m3@containment[entity1Class], a.scheme in ["java+method","java+constructor"]};
 		
 	} else if ( locInModel(entity1Method, m3) ){
 		e = entity1Method;
@@ -284,19 +312,19 @@ set[Message] checkInstantiate(Rule r, Entity e1, Entity e2, Modality modality, M
 set[Message] checkInherit(Rule r, Entity e1, Entity e2, Modality modality, M3 m3){
 	//Check if class e1 is a subtype of class e2
 	
-	loc entity1Class = |java+class:///| + replaceAll(e1,".","/");
-	loc entity2Class = |java+class:///| + replaceAll(e2,".","/");
+	loc entity1Class = |java+class:///| + replaceAll(unparse(e1),".","/");
+	loc entity2Class = |java+class:///| + replaceAll(unparse(e2),".","/");
 	
 	set[loc] superClasses = {};
 	
-	if(locInModel(entity1Class)){
+	if(locInModel(entity1Class,m3)){
 		superClasses = superClasses + m3@extends[entity1Class];
 		
 	} else {
 		throw ("\""+ unparse(e1) + "\" does not name a valid and unique class.");
 	}
 	
-	if(locInModel(entity2Class)){
+	if(locInModel(entity2Class,m3)){
 		return checkModality(entity2Class, modality, superClasses) 
 			? {} 
 			: {info("Rule Violation: " + unparse(r), entity2Class)};
@@ -332,6 +360,10 @@ set[Message] eval(Rule rule, M3 m3) {
   return msgs;
 }
 
+test bool mustImport(){
+	return size(eval((Rule)`nl.tudelft.jpacman.ui must import java.awt.Color`,jpacmanM3())) == 0;
+}
+
 test bool cannotDepend(){
 	return size(eval((Rule)`nl.tudelft.jpacman.board.Board cannot depend nl.java.tudelft.jpacman.ui`,jpacmanM3())) == 0;
 }
@@ -341,3 +373,22 @@ test bool mustDepend(){
 	return (size(m) == 1 && getOneFrom(m).msg == "Rule Violation: nl.tudelft.jpacman.board must depend nl.java.tudelft.jpacman.ui");
 }
 
+test bool mustInstantiate(){
+	return size(eval((Rule)`nl.tudelft.jpacman.level.Level must instantiate java.util.ArrayList`,jpacmanM3())) == 0;
+}
+
+test bool canonlyInstantiate(){
+	return size(eval((Rule)`nl.tudelft.jpacman.level.Level must instantiate java.util.ArrayList`,jpacmanM3())) == 0;
+}
+
+test bool mustInvoke(){
+	return size(eval((Rule)`nl.tudelft.jpacman.board.Board must invoke nl.tudelft.jpacman.board.Board.withinBorders`,jpacmanM3())) == 0;
+}
+
+test bool mustInherit(){
+	return size(eval((Rule)`nl.tudelft.jpacman.level.Pellet must inherit nl.tudelft.jpacman.board.Unit`,jpacmanM3())) == 0;
+}
+
+test bool testSuperPackages(){
+	return superPackages(|java+constructor:///java/util/ArrayList|) == {|java+package:///java/util|,|java+package:///java|};
+}
