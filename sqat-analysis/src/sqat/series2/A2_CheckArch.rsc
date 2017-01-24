@@ -57,7 +57,7 @@ Questions
 - how would you test your evaluator of Dicto rules? (sketch a design)
 
 - come up with 3 rule types that are not currently supported by this version
-  of Dicto (and explain why you'd need them). 
+  of Dicto (and explain why you'd need them).
   
   	The Dicto language as defined here does not support multiple identifiers on the right-hand side, which makes the "can only" modality less useful. 
   	You would want to be able to specify a list of packages that a package is allowed to import.
@@ -99,38 +99,52 @@ set[loc] packageImports(loc package, M3 m3){
 	return {*fileImports(x, m3) | x <- files};
 }
 
-bool checkModality(loc target, Modality modality, set[loc] invoked){
-
-	if(modality == (Modality)`must`){
-	
-		return (target in invoked);
-	
-	} else if (modality == (Modality)`may`){
-	
-		//Cannot be violated: either it does invoke it, which it is allowed to, or it doesn't, which it doesn't have to.
-		return true;
-		
-	} else if (modality == (Modality)`cannot`){
-	
-		return (target notin invoked);
-		
-	} else if (modality == (Modality)`can only`){
-		
-		return (target in invoked && size(invoked) == 1);
-		
+bool checkModality(loc target, Modality modality, set[loc] invoked, bool includeSupers) {
+	set[loc] allInvoked;
+	if (includeSupers) {
+		allInvoked = invoked + {*superPackages(x) | x <- invoked};
 	} else {
-		
+		allInvoked = invoked;
+	}
+	if(modality == (Modality)`must`) {
+		return (target in allInvoked);
+	} else if (modality == (Modality)`may`) {
+		return true; //Cannot be violated: either it does invoke it, which it is allowed to, or it doesn't, which it doesn't have to.
+	} else if (modality == (Modality)`cannot`) {
+		return (target notin allInvoked);
+	} else if (modality == (Modality)`can only`) {
+		return (target in invoked && size(invoked) == 1); //todo
+	} else {
 		throw ("\"" + m + "\" is not a valid modality (must|may|cannot|can only)");
-		
 	}
 }
 
-set[loc] superPackages(loc package){
+set[loc] superPackages(loc package) {
 	list[str] s = split("/",package.path);
-	return { |java+package:///| + intercalate("/",s[1..n]) | int n <- [2..size(s)] };	
+	return {|java+package:///| + intercalate("/",s[1..n]) | int n <- [2..size(s)]};	
 }
 
-set[Message] checkImport(Rule r, Entity e1, Entity e2, Modality modality, M3 m3){
+bool checkImportModality(loc target, Modality modality, set[loc] invoked){
+	set[loc] allInvoked;
+	if (includeSupers) {
+		allInvoked = invoked + {*superPackages(x) | x <- invoked};
+	} else {
+		allInvoked = invoked;
+	}
+	if(modality == (Modality)`must`) {
+		return (target in allInvoked);
+	} else if (modality == (Modality)`may`) {
+		return true; //Cannot be violated: either it does invoke it, which it is allowed to, or it doesn't, which it doesn't have to.
+	} else if (modality == (Modality)`cannot`) {
+		return (target notin allInvoked);
+	} else if (modality == (Modality)`can only`) {
+		return (false notin {target in superPackages(x) | x <- invoked}); //todo
+	} else {
+		throw ("\"" + m + "\" is not a valid modality (must|may|cannot|can only)");
+	}
+}
+
+set[Message] checkImport(Rule r, Entity e1, Entity e2, Modality modality, M3 m3) {
 //Check if package e1 imports pkg/class e2
 
 	loc entity1 = |java+package:///| + replaceAll(unparse(e1),".","/");
@@ -138,26 +152,25 @@ set[Message] checkImport(Rule r, Entity e1, Entity e2, Modality modality, M3 m3)
 	loc entity2Class = |java+class:///| + replaceAll(unparse(e2),".","/");
 	loc en2;
 	
-	if(!packageExists(entity1,m3)){
+	if(!packageExists(entity1,m3)) {
 		throw (unparse(e1) + " does not name a valid package.");
 	}
 	
-	if(packageExists(entity2Package,m3)){
+	if(packageExists(entity2Package,m3)) {
 		en2 = entity2Package;
-	} else if (locInModel(entity2Class,m3)){
+	} else if (locInModel(entity2Class,m3)) {
 		en2 = entity2Class;
 	} else {
-		throw (unparse(e2) + " does not name a valid package.");
+		throw (unparse(e2) + " does not name a valid package/class.");
 	}
 		
 	set[loc] imports = packageImports(entity1,m3);
-	imports = imports + {*superPackages(x) | x <- imports}; //If a rule forbids importing foo, we must make sure that it recognizes foo.bar as well
 	
-	 if (checkModality(en2, modality, imports)){
+	if (checkModality(en2, modality, imports, true)) {
 	 	return {};
-	 } else {
+	} else {
 	 	return {info("Rule Violation: " + unparse(r), entity1)};
-	 }
+	}
 }
 
 set[loc] fileClasses(loc cu, M3 m) = { c | c <- m@containment[cu], cu.scheme == "java+class"};

@@ -1,0 +1,53 @@
+may import 
+	"May" doesn't do shit, return true.
+may depend class
+	-
+may depend pkg
+	-
+may invoke method
+	-
+may instantiate class
+	-
+may inherit class 
+	-
+
+must import pkg
+	must import some class/pkg of pkg.
+must depend class
+	method invocation, instantiation, field access, static method access, that kind of shit. IMPORTS NOT INCLUDED.
+must depend pkg
+	must depend on some class of pkg.
+must invoke method
+	-
+must instantiate class
+	must invoke constructor of class or subclass.
+	SUPERCLASSES INCLUDED. if you instantiate a (which extends b), that also counts as instantiating b.
+must inherit class
+	a extends b.
+	Or a extends b extends c extends d. TRANSITIVE.
+
+cannot import pkg
+	cannot import pkg or any of its subpackages/classes.
+cannot depend class
+	cannot use class in any way, NOR ITS SUBCLASSES (because of inheritance.)
+cannot depend pkg
+	cannot use any class/pkg in pkg.
+cannot invoke method
+	-
+cannot instantiate class
+	-
+cannot inherit class
+	Transitive...
+
+can only import pkg
+	can only import pkg or subpackages/classes in pkg.
+can only depend class
+	can only invoke, instantiate or access class. does not allow use of subclasses.
+can only depend pkg
+	can only use package or its subpackages/classes.
+can only invoke method
+	-
+can only instantiate class
+	can only instantiate this class, not any other classess (nor its subclasses).
+can only inherit class
+	can only inherit from Object or the class

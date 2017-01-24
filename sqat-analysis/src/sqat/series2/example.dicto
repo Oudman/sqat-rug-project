@@ -1,4 +1,4 @@
 
-foo.Foo cannot depend bar.Bar
-foo.Foo::init cannot instantiate bar.Bar
-foo cannot import bar
+nl.tudelft.jpacman.game cannot depend nl.tudelft.jpacman.ui
+nl.tudelft.jpacman.Launcher may instantiate java.awt.event.KeyEvent;
+nl.tudelft.jpacman.Launcher must import java.io.InputStream;
