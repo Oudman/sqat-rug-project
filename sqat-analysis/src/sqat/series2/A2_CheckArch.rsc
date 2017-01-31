@@ -99,21 +99,15 @@ set[loc] packageImports(loc package, M3 m3){
 	return {*fileImports(x, m3) | x <- files};
 }
 
-bool checkModality(loc target, Modality modality, set[loc] invoked, bool includeSupers) {
-	set[loc] allInvoked;
-	if (includeSupers) {
-		allInvoked = invoked + {*superPackages(x) | x <- invoked};
-	} else {
-		allInvoked = invoked;
-	}
+bool checkModality(loc target, Modality modality, set[loc] invoked) {
 	if(modality == (Modality)`must`) {
-		return (target in allInvoked);
+		return (target in invoked);
 	} else if (modality == (Modality)`may`) {
 		return true; //Cannot be violated: either it does invoke it, which it is allowed to, or it doesn't, which it doesn't have to.
 	} else if (modality == (Modality)`cannot`) {
-		return (target notin allInvoked);
+		return (target notin invoked);
 	} else if (modality == (Modality)`can only`) {
-		return (target in invoked && size(invoked) == 1); //todo
+		return (false notin {target in {x} + superPackages(x) | x <- invoked});
 	} else {
 		throw ("\"" + m + "\" is not a valid modality (must|may|cannot|can only)");
 	}
@@ -122,26 +116,6 @@ bool checkModality(loc target, Modality modality, set[loc] invoked, bool include
 set[loc] superPackages(loc package) {
 	list[str] s = split("/",package.path);
 	return {|java+package:///| + intercalate("/",s[1..n]) | int n <- [2..size(s)]};	
-}
-
-bool checkImportModality(loc target, Modality modality, set[loc] invoked){
-	set[loc] allInvoked;
-	if (includeSupers) {
-		allInvoked = invoked + {*superPackages(x) | x <- invoked};
-	} else {
-		allInvoked = invoked;
-	}
-	if(modality == (Modality)`must`) {
-		return (target in allInvoked);
-	} else if (modality == (Modality)`may`) {
-		return true; //Cannot be violated: either it does invoke it, which it is allowed to, or it doesn't, which it doesn't have to.
-	} else if (modality == (Modality)`cannot`) {
-		return (target notin allInvoked);
-	} else if (modality == (Modality)`can only`) {
-		return (false notin {target in superPackages(x) | x <- invoked}); //todo
-	} else {
-		throw ("\"" + m + "\" is not a valid modality (must|may|cannot|can only)");
-	}
 }
 
 set[Message] checkImport(Rule r, Entity e1, Entity e2, Modality modality, M3 m3) {
@@ -166,7 +140,7 @@ set[Message] checkImport(Rule r, Entity e1, Entity e2, Modality modality, M3 m3)
 		
 	set[loc] imports = packageImports(entity1,m3);
 	
-	if (checkModality(en2, modality, imports, true)) {
+	if (checkModality(en2, modality, imports)) {
 	 	return {};
 	} else {
 	 	return {info("Rule Violation: " + unparse(r), entity1)};
